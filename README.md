@@ -1,1 +1,1 @@
-# cs120b_brickBreaker
+# Brick Breaker Custom Lab Project
