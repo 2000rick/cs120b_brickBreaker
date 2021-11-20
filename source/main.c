@@ -1,12 +1,14 @@
 /*	Author: Qipeng Liang
  *	Lab Section: 021
- *	Assignment: Lab #Custom Lab  Exercise #1
- *	Exercise Description: [optional - include for your own benefit]
+ *	Assignment: Custom Lab Prpoject  Phase #2
+ *	Description: Brick Breaker, Custom Lab Project.
+ *	Current code is work in progress for the second phase of the project.
+ *	Objectives for the current phase are: integrate shift register with LED matrix, continue on the game mechanics, and start joystick implementation.
  *
  *	I acknowledge all content contained herein, excluding template or example
  *	code, is my own original work.
  *
- *	Demo Link: https://youtu.be/Uth3r56E3nM
+ *	Demo Link: 
  */
 #include <avr/io.h>
 #include <unistd.h>
@@ -14,7 +16,6 @@
 #include "bit.h"
 #include "io.c"
 #include "io.h"
-#include "keypad.h"
 #include "queue.h"
 #include "scheduler.h"
 #include "stack.h"
@@ -22,6 +23,30 @@
 #ifdef _SIMULATE_
 #include "simAVRHeader.h"
 #endif
+
+//Begin Shift Register Driver Functions
+void ClockPulse() { //generates a pulse for the ShiftReg Clk
+	PORTD = PORTD | 0x02; //high
+	PORTD = PORTD & 0xFD; //low
+}
+
+void SetHigh() { PORTD = PORTD | 0x01; } //bit to shift is 1
+void SetLow() { PORTD = PORTD & 0xFE; } //bit to shift is 0
+
+void DataWrite(unsigned char input) {
+	/*static unsigned char lastInput;
+	if(input == lastInput) return;
+	else lastInput = input;*/
+	PORTD = PORTD & 0xFB; //Disable PB2 output while writing
+	for(unsigned char i = 0; i < 8; ++i) {
+		if(input & 0x80) SetHigh(); //masking checks if the MSB is 1
+		else SetLow();
+		input = input << 1; //LeftShift to check the next MST
+		ClockPulse();
+	}
+	PORTD = PORTD | 0x04; //Set PB2 high for output
+}
+//End ShiftReg Drivers
 
 unsigned char winFlag = 0;
 unsigned char score = 0;
@@ -77,7 +102,8 @@ int LEDSMTick(int state) {
 			state = Start; break;
 	}
 	PORTC = pattern;
-	PORTD = enable;
+	DataWrite(enable);
+	//PORTD = enable;
 	return state;
 }
 
@@ -216,6 +242,7 @@ int main(void) {
 	DDRA = 0x00;	PORTA = 0xFF;
 	DDRC = 0xFF;	PORTC = 0x00;
 	DDRD = 0xFF;	PORTD = 0x00;
+	//DDRD = 0x07;	PORTD = 0xF8; //PB0 is DS, PB1 is ShiftReg ClkIn, PB2 is StorageReg ClkIn
 	static task task1, task2, task3, task4;
 	task *tasks[] = { &task1, &task2, &task3, &task4 };
 	const unsigned short numTasks = sizeof(tasks)/sizeof(task*);
