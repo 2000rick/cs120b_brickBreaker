@@ -11,9 +11,7 @@
  *	Demo Link: 
  */
 
-#define F_CPU 8000000UL
 #include <avr/io.h>
-#include <util/delay.h>
 #include <stdio.h>
 #include "bit.h"
 #include "io.c"
@@ -36,6 +34,9 @@ void SetHigh() { PORTD = PORTD | 0x01; } //bit to shift is 1
 void SetLow() { PORTD = PORTD & 0xFE; } //bit to shift is 0
 
 void DataWrite(unsigned char input) {
+	/*static unsigned char lastInput;
+	if(input == lastInput) return;
+	else lastInput = input;*/
 	PORTD = PORTD & 0xFB; //Disable PD2 output while writing
 	for(unsigned char i = 0; i < 8; ++i) {
 		if(input & 0x80) SetHigh(); //masking checks if the MSB is 1
@@ -351,7 +352,7 @@ int JoystickSMTick(int state) {
 	}
 
 	ADMUX |= 0x01;
-	 _delay_ms(1); 
+	delay_ms(1); 
 	joyUD = ADC;
 	if(joyUD > 700) {
 		joyMove |= 0x04;
