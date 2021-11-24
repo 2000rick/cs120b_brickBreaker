@@ -69,7 +69,6 @@ int LEDSMTick(int state) {
 
 	switch (state) {
 		case Start:
-			PORTB = 0x00;
 			if(cnt == 0) {
 				cnt++;
 				enable = 0xFF; //enable off to prevent ghosting
