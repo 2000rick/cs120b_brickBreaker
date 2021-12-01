@@ -2,8 +2,10 @@
  *	Lab Section: 021
  *	Assignment: Custom Lab Prpoject  Phase #3
  *	Description: Brick Breaker, Custom Lab Project.
- *	Current code is work in progress for the second phase of the project.
- *	Objectives for the current phase are: integrate shift register with LED matrix, continue on the game mechanics, and start joystick implementation.
+ *		Final Phase of project, main objectives:
+ *		*Get Nokia LCD screen to work with hardware and write the software driver functions for it, then get it to display to appropriate informational messages
+ *		*Develop the second level of the game
+ *		*Solve any known bugs and/or optimize game logic if neccessary
  *
  *	I acknowledge all content contained herein, excluding template or example
  *	code, is my own original work.
@@ -20,6 +22,7 @@
 #include "scheduler.h"
 #include "stack.h"
 #include "timer.h"
+#include "charSet.h"
 #ifdef _SIMULATE_
 #include "simAVRHeader.h"
 #endif
@@ -365,37 +368,58 @@ void ADC_init() {
 	ADCSRA |= (1 << ADEN) | (1 << ADSC) | (1 << ADATE);
 }
 
-void Nokia_setup(unsigned char input) {
+void Nokia_write(unsigned char input) {
 	PORTB &= 0xFD; //CE active low
 	for(unsigned char i = 0; i < 8; ++i) {
 		if(input & 0x80) PORTB |= 0x08;
 		else PORTB &= ~(0x08);
 		input = input << 1;
 		PORTB |= 0x10; //Pulse Clk 1/2
-		delay_ms(1);
+		//delay_ms(1);
 		PORTB &= ~(0x10); //Pulse Clk 2/2
-		delay_ms(1);
 	}
 	PORTB |= ~(0xFD); //Set CE back to high
+}
+
+void Nokia_print(char input) {		//prints 1 char to the LCD
+	for(unsigned char i = 0; i < 5; ++i) {
+		Nokia_write(charset[input-32][i]);
+	}
+}
+
+void Nokia_string(char* input) { //prints the Cstring one char at a time
+	while(*input) { Nokia_print(*input++); }
+}
+
+void Nokia_clear() {//(84*48) pixels over 8 pixels/bits per byte gives us 504//
+	for(unsigned i = 0; i < 504; ++i) Nokia_write(0x00);
+	PORTB &= ~(0x04); //command mode
+	Nokia_write(0x40); //Set Y-cursor to 0 (datasheet 14)
+	Nokia_write(0x80); //Set X-cursor to 0
+	PORTB |= 0x04;	 //change back to data mode
 }
 
 void Nokia_init() {
 	PORTB &= 0xFE; //pulse reset to initialize LCD 1/2
 	delay_ms(50);
 	PORTB |= ~(0xFE); // pulse 2/2
-	Nokia_setup(0x21); //commands to set up LCD 1/4
-	Nokia_setup(0x90);
-	Nokia_setup(0x20);
-	Nokia_setup(0x0C); //command mode 4/4
+	Nokia_write(0x23); //commands to set up LCD 1/4 (datasheet 22), enabled vertical addressing here
+	Nokia_write(0x90);
+	Nokia_write(0x20);
+	Nokia_write(0x0C); //command mode 4/4
 	PORTB |= 0x04; //Swicth from command to data
-	Nokia_setup(0x1F);
-	Nokia_setup(0x05);
-	Nokia_setup(0x07);
-	Nokia_setup(0x00);
-	Nokia_setup(0x1F);
+	Nokia_clear();
+	//Nokia_string("Welcome to Brick Breaker          Move joystick up to start ");
+	Nokia_string("Welcome to Brick Breaker");
+	for(unsigned char i = 0; i < 132; ++i) Nokia_write(0x00);
+	Nokia_string("Move joystick up to start");
+	/*Nokia_write(0x1F);
+	Nokia_write(0x05);
+	Nokia_write(0x07);
+	Nokia_write(0x00);
+	Nokia_write(0x1F);//PI should be displayed (from datasheet)
+	*/
 }
-
-
 
 int main(void) {
 	DDRA = 0x00;	PORTA = 0xFF;
