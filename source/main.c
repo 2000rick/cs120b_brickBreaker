@@ -22,7 +22,7 @@
 #include "scheduler.h"
 #include "stack.h"
 #include "timer.h"
-#include "charSet.h"
+#include "Nokia.h"
 #ifdef _SIMULATE_
 #include "simAVRHeader.h"
 #endif
@@ -51,6 +51,7 @@ void DataWrite(unsigned char input) {
 unsigned char winFlag = 0;
 unsigned char loseFlag = 0;
 unsigned char score = 0;
+unsigned char sFlag = 0; //Signal to update score in LCD
 unsigned short joyLR = 0; //Position of joystick in the left and right axis
 unsigned short joyUD = 0; //position of joystick in the up down axis
 unsigned char joyMove = 0x00; //Where the joystick is turned, J0 represents left, J1 right, J2 Up, J3 Down
@@ -273,6 +274,7 @@ int BallSMTick(int state) {
 
 enum Brick_States {Brick_start, Brick_update, Brick_wait};
 int BrickSMTick(int state) {
+	static unsigned char comp; //used to determine if a brick was hit and update score
 	switch(state) {
 		case Brick_start:
 			brickEn = 0xE0;
@@ -280,7 +282,9 @@ int BrickSMTick(int state) {
 			break;
 		case Brick_update:
 			if(ballPos == 0x01) {
+				comp = brickEn;
 				brickEn = ( brickEn | (~ballEn) ) ;
+				if(comp != brickEn) { ++score; sFlag = 1; }
 				if(brickEn == 0xFF) {
 					winFlag = 1;
 					state = Brick_start;
@@ -332,6 +336,59 @@ int PaddleSMTick(int state) {
 	if(joyMove & 0x01) state = Paddle_start;
 	return state;
 }
+enum Nokia_States {Nokia_start, Nokia_inGame, Nokia_score, Nokia_win1, Nokia_lose1, Nokia_wait, Nokia_waitScore, Nokia_winWait};
+int NokiaSMTick(int state) {
+	switch(state) {
+		case Nokia_start:
+			score = 0;
+			Nokia_clear();
+			Nokia_string("Welcome to Brick Breaker");
+			for(unsigned char i = 0; i < 132; ++i) Nokia_write(0x00);
+			Nokia_string("Move joystick up to start");
+			state = Nokia_wait;
+			break;
+		case Nokia_inGame:
+			Nokia_clear();
+			Nokia_string("Game in progress ...");
+			for(unsigned char i = 0; i < 152; ++i) Nokia_write(0x00);
+			Nokia_string("score: ");
+			Nokia_print(score + '0');
+			state = Nokia_waitScore;
+			break;
+		case Nokia_score:
+			PORTB &= ~(0x04); //command
+			Nokia_write(0x43);//set Y pos
+			Nokia_write(0x9F); //set X pos
+			PORTB |= 0x04; //data
+			Nokia_write(0x00); Nokia_write(0x00); Nokia_write(0x00); Nokia_write(0x00); //clear score on LCD
+			Nokia_print(score + '0'); //display new score on LCD
+			state = Nokia_waitScore;
+			if(score == 5) state = Nokia_win1;
+			break;
+		case Nokia_win1:
+			Nokia_clear();
+			Nokia_string("Nice! You Won!");
+			for(unsigned char i = 0; i < 100; ++i) Nokia_write(0x00);
+			Nokia_string("Current score: ");
+			Nokia_print(score + '0');
+			state = Nokia_winWait;
+			break;
+		case Nokia_wait:
+			if(joyMove & 0x02) state = Nokia_inGame;
+			break;
+		case Nokia_waitScore:
+			if(sFlag) { state = Nokia_score; sFlag = 0; }
+			break;
+		case Nokia_winWait:
+			if(!winFlag) state = Nokia_start;
+			//if(joyMove & 0x02) state = Nokia_start;
+			break;
+		default:
+			state = Nokia_start; break;
+	}
+	if(joyMove & 0x01) { state = Nokia_start; }
+	return state;
+}
 
 //Joystick Driver Function/Machine, only needs 1 state
 //Sole purpose is to write to shared variable joyMove which is used by other tasks
@@ -368,59 +425,6 @@ void ADC_init() {
 	ADCSRA |= (1 << ADEN) | (1 << ADSC) | (1 << ADATE);
 }
 
-void Nokia_write(unsigned char input) {
-	PORTB &= 0xFD; //CE active low
-	for(unsigned char i = 0; i < 8; ++i) {
-		if(input & 0x80) PORTB |= 0x08;
-		else PORTB &= ~(0x08);
-		input = input << 1;
-		PORTB |= 0x10; //Pulse Clk 1/2
-		//delay_ms(1);
-		PORTB &= ~(0x10); //Pulse Clk 2/2
-	}
-	PORTB |= ~(0xFD); //Set CE back to high
-}
-
-void Nokia_print(char input) {		//prints 1 char to the LCD
-	for(unsigned char i = 0; i < 5; ++i) {
-		Nokia_write(charset[input-32][i]);
-	}
-}
-
-void Nokia_string(char* input) { //prints the Cstring one char at a time
-	while(*input) { Nokia_print(*input++); }
-}
-
-void Nokia_clear() {//(84*48) pixels over 8 pixels/bits per byte gives us 504//
-	for(unsigned i = 0; i < 504; ++i) Nokia_write(0x00);
-	PORTB &= ~(0x04); //command mode
-	Nokia_write(0x40); //Set Y-cursor to 0 (datasheet 14)
-	Nokia_write(0x80); //Set X-cursor to 0
-	PORTB |= 0x04;	 //change back to data mode
-}
-
-void Nokia_init() {
-	PORTB &= 0xFE; //pulse reset to initialize LCD 1/2
-	delay_ms(50);
-	PORTB |= ~(0xFE); // pulse 2/2
-	Nokia_write(0x23); //commands to set up LCD 1/4 (datasheet 22), enabled vertical addressing here
-	Nokia_write(0x90);
-	Nokia_write(0x20);
-	Nokia_write(0x0C); //command mode 4/4
-	PORTB |= 0x04; //Swicth from command to data
-	Nokia_clear();
-	//Nokia_string("Welcome to Brick Breaker          Move joystick up to start ");
-	Nokia_string("Welcome to Brick Breaker");
-	for(unsigned char i = 0; i < 132; ++i) Nokia_write(0x00);
-	Nokia_string("Move joystick up to start");
-	/*Nokia_write(0x1F);
-	Nokia_write(0x05);
-	Nokia_write(0x07);
-	Nokia_write(0x00);
-	Nokia_write(0x1F);//PI should be displayed (from datasheet)
-	*/
-}
-
 int main(void) {
 	DDRA = 0x00;	PORTA = 0xFF;
 	DDRB = 0xFF;	PORTB = 0x03; //0000 0011 PB0 Reset, PB1 ChipEnable, PB2 Data/Command, PB3 Din, PB4 Clk
@@ -430,8 +434,8 @@ int main(void) {
 	ADC_init();
 	Nokia_init();
 
-	static task task1, task2, task3, task4, task5;
-	task *tasks[] = { &task1, &task2, &task3, &task4, &task5 };
+	static task task1, task2, task3, task4, task5, task6;
+	task *tasks[] = { &task1, &task2, &task3, &task4, &task5, &task6 };
 	const unsigned short numTasks = sizeof(tasks)/sizeof(task*);
 	const char start = -1;
 	task1.state = start;
@@ -458,6 +462,11 @@ int main(void) {
 	task5.period = 20;
 	task5.elapsedTime = task5.period;
 	task5.TickFct = &JoystickSMTick;
+
+	task6.state = start;
+	task6.period = 150;
+	task6.elapsedTime = task6.period;
+	task6.TickFct = &NokiaSMTick;
 
 	unsigned long GCD = tasks[0]->period;
 	for(int i = 1; i < numTasks; i++) {
