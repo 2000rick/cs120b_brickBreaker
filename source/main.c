@@ -55,16 +55,19 @@ unsigned char sFlag = 0; //Signal to update score in LCD
 unsigned short joyLR = 0; //Position of joystick in the left and right axis
 unsigned short joyUD = 0; //position of joystick in the up down axis
 unsigned char joyMove = 0x00; //Where the joystick is turned, J0 represents left, J1 right, J2 Up, J3 Down
-unsigned char brickPattern = 0x01; //Pattern for the bricks, which is the last column for lv1
+unsigned char brickPattern = 0x01; //Pattern for the bricks, which is the last column/row for lv1
 unsigned char brickEn = 0xE0; //Rows to enable for the bricks, which is all 5 rows in the beginning
 unsigned char paddlePattern = 0x80; //Player's paddle pattern
-//unsigned char paddleEn = 0xF3; //The rows to enable for the paddle
 unsigned char paddleLen = 0xFB ; //enable for left portion of paddle
 unsigned char paddleRen = 0xF7; //enable for right portion of paddle
 unsigned char ballPos = 0x40; //Ball position, initialized to row 3 column 2
 unsigned char ballEn = 0xFB; //Which row to enable for the ball, initialized to row 3
+unsigned char brickPattern2 = 0x02; //Additional bricks for lv2
+unsigned char brickEn2 = 0xE0; //brick enable for lv2, which is all 5 rows/columns initially
+unsigned char lv2 = 0; //Flag that indicates we are in level 2 
+unsigned char clearFlag = 0; //signals to the BallSM that one row in lv2 has been cleared
 
-enum LED_States {Start, GameWon, GameOver, Wait, Wait2};
+enum LED_States {Start, GameWon, GameOver, Level2, Wait };
 int LEDSMTick(int state) {
 
 	static unsigned short cnt = 0;
@@ -112,13 +115,13 @@ int LEDSMTick(int state) {
 				cnt = 0;
 			}
 			if(winFlag) { state = GameWon; cnt = 0; }
-			if(loseFlag) { state = GameOver; cnt = 0; }
+			if(loseFlag) { state = GameOver; cnt = 0; lv2 = 0; }
 			break;
 		case GameWon:
 			cnt++;
 			pattern = 0xFF;
 			enable = 0xE0;
-			if(joyMove & 0x02) { state = Start; cnt = 0; pattern = 0x00; enable = 0xFF; winFlag = 0; }
+			if(joyMove & 0x02) { state = Level2; cnt = 0; pattern = 0x00; enable = 0xFF; winFlag = 0; lv2 = 1; }
 			break;
 		case GameOver:
 			cnt++;
@@ -126,26 +129,74 @@ int LEDSMTick(int state) {
 			enable = 0xFB;
 			if(joyMove & 0x02) { state = Start; cnt = 0; pattern = 0x00; enable = 0xFF; loseFlag = 0; }
 			break;
-		case Wait:
-			if(PINA == 0xFF) state = Wait2;
-			break;
-		case Wait2:
-			if(~PINA & 0x01) state = Start;
+		case Level2:
+			if(cnt == 0) {
+				cnt++;
+				enable = 0xFF; //enable off to prevent ghosting
+			}
+			else if(cnt == 1) {
+				cnt++;
+				pattern = brickPattern;
+				enable = brickEn;
+			}
+			else if (cnt == 2) {
+				cnt++;
+				enable = 0xFF; //enable is off
+			}
+			else if (cnt == 3) {
+				cnt++;
+				pattern = brickPattern2;
+				enable = brickEn2;
+			}
+			else if (cnt == 4) {
+				cnt++;
+				enable = 0xFF;
+			}
+			else if (cnt == 5) {
+				cnt++;
+				pattern = paddlePattern;
+				enable = paddleLen;
+			}
+			else if (cnt == 6) {
+				cnt++;
+				enable = 0xFF;
+			}
+			else if (cnt == 7) {
+				cnt++;
+				enable = paddleRen;
+			}
+			else if(cnt == 8) {
+				cnt++;
+				enable = 0xFF;
+			}
+			else if (cnt == 9) {
+				cnt = 0;
+				pattern = ballPos;
+				enable = ballEn;
+			}
+			else {
+				cnt = 0;
+			}
+			if(winFlag) { state = GameWon; cnt = 0; }
+			if(loseFlag) { state = GameOver; cnt = 0; }
 			break;
 		default: 
 			state = Start; break;
 	}
 	PORTC = pattern;
 	DataWrite(enable);
-	//PORTD = enable;
 	return state;
 }
 
-enum Ball_States {Ball_Start, Ball_Right, Ball_Left, Ball_Wait, Ball_dright_up, Ball_dleft_up, Ball_dright_down, Ball_dleft_down};
+enum Ball_States {Ball_Start, Ball_Right, Ball_Left, Ball_dright_up, Ball_dleft_up, Ball_dright_down, Ball_dleft_down,
+	   			  			 Ball_up2, Ball_down2, Ball_dright_up2, Ball_dleft_up2, Ball_dright_down2, Ball_dleft_down2 };
 int BallSMTick(int state) {
 	switch(state) {
 		case Ball_Start:
-			if(joyMove & 0x02) state = Ball_Right;//Push up on joystick to start 
+			if(joyMove & 0x02) { //Push up on joystick to start 
+				if(lv2) { state = Ball_up2; }
+				else	{ state = Ball_Right; }
+			}
 			break;
 		case Ball_Right:
 			if(ballPos == 0x01) {
@@ -263,22 +314,143 @@ int BallSMTick(int state) {
 			}
 		    if(ballPos == 0x80 && (ballEn != paddleLen) && (ballEn != paddleRen)) { loseFlag = 1; }
 			break;
+		case Ball_up2: //Level 2 cases begin here...
+			if(ballPos == 0x02) {
+				state = Ball_down2;
+				ballPos = 0x04;
+			}
+			else ballPos = (ballPos >> 1);
+			break;
+		case Ball_down2:
+			if(ballPos == 0x80) {
+				state = Ball_up2;
+				ballPos = 0x40;
+			}
+			else ballPos = (ballPos << 1);
+			if(ballPos == 0x80 && ballEn == paddleRen) { //ball goes diagonal if hits right side of paddle
+				state = Ball_dright_up2;
+			}
+			if(ballPos == 0x80 && (ballEn != paddleLen) && (ballEn != paddleRen)) { loseFlag = 1; } //Losing Condition
+			break;
+		case Ball_dright_up2: //diagonal right going up
+			if(ballEn == 0xEF && ballPos == 0x02) { //case where ball hits top-right corner
+				state = Ball_dleft_down2;
+				ballEn = (ballEn >> 1) | 0x80;
+				ballPos = ballPos << 1;
+			}
+			else if(ballEn == 0xEF) { //case where ball hits right boundary/wall
+				state = Ball_dleft_up2;
+				ballEn = (ballEn >> 1) | 0x80;
+				ballPos = ballPos >> 1;
+			}
+			else if(ballPos == 0x02) { //case where ball hits the top
+				state = Ball_dright_down2;
+				ballEn = (ballEn << 1) | 0x01;
+				ballPos = ballPos << 1;
+			}
+			else {
+				ballEn = (ballEn << 1) | 0x01;
+				ballPos = ballPos >> 1;
+			}
+			break;
+		case Ball_dleft_up2: //diagonal left going up
+			if(ballEn == 0xFE && ballPos == 0x02) { //case where ball hits top-left corner
+				state = Ball_dright_down2;
+				ballEn = (ballEn << 1) | 0x01;
+				ballPos = ballPos << 1;
+			}
+			else if(ballEn == 0xFE) { //case where ball hits left boundary/wall
+				state = Ball_dright_up2;
+				ballEn = (ballEn << 1) | 0x01;
+				ballPos = ballPos >> 1;
+			}
+			else if(ballPos == 0x02) { //case where ball hits the top, but not corner
+				state = Ball_dleft_down2;
+				ballEn = (ballEn >> 1) | 0x80;
+				ballPos = ballPos << 1;
+			}
+			else { //tyical case
+				ballEn = (ballEn >> 1) | 0x80;
+				ballPos = ballPos >> 1;
+			}
+			break;
+		case Ball_dright_down2: //diagonal right going down
+			if(ballEn == 0xEF && ballPos == 0x80) { //case where ball hits bottom-right corner
+				state = Ball_dleft_up2;
+				ballEn = (ballEn >> 1) | 0x80;
+				ballPos = ballPos >> 1;
+			}
+			else if(ballEn == 0xEF) { //case where ball hits right boundary/wall
+				state = Ball_dleft_down2;
+				ballEn = (ballEn >> 1) | 0x80;
+				ballPos = ballPos << 1;
+			}
+			else if(ballPos == 0x80) { //case where ball reaches the bottom/paddle
+				if(ballEn != paddleLen) {
+					state = Ball_dright_up2;
+					//ballEn = (ballEn << 1) | 0x01; //commented out for lv2 game adjustment
+					ballPos = ballPos >> 1;
+				}
+				else {
+					state = Ball_up2;
+					ballPos = ballPos >> 1;
+				}
+			}
+			else {
+				ballEn = (ballEn << 1) | 0x01;
+				ballPos = ballPos << 1;
+			}
+			if(ballPos == 0x80 && (ballEn != paddleLen) && (ballEn != paddleRen)) { loseFlag = 1; }
+			break;
+		case Ball_dleft_down2: //diagonal left going down
+			if(ballEn == 0xFE && ballPos == 0x80) { //case where ball hits bottom-left corner
+				state = Ball_dright_up2;
+				//ballEn = (ballEn << 1) | 0x01;  //commented out this line to make the ball be able to hit all bricks
+				ballPos = ballPos >> 1;
+			}
+			else if(ballEn == 0xFE) { //case where ball hits left bounadry/wall
+				state = Ball_dright_down2;
+				ballEn = (ballEn << 1) | 0x01;
+				ballPos = ballPos << 1;
+			}
+			else if(ballPos == 0x80) { //case where ball hits bottom/paddle
+				if(ballEn != paddleLen) {
+					state = Ball_dleft_up2;
+					ballEn = (ballEn >> 1) | 0x80;
+					ballPos = ballPos >> 1;
+				}
+				else {
+					state = Ball_up2;
+					ballPos = ballPos >> 1;
+				}
+			}
+			else {
+				ballEn = (ballEn >> 1) | 0x80;
+				ballPos = ballPos << 1;
+			}
+		    if(ballPos == 0x80 && (ballEn != paddleLen) && (ballEn != paddleRen)) { loseFlag = 1; }
+			break;
 		default:
 			state = Ball_Start; break;
 	}
 	if(winFlag) { state = Ball_Start; ballPos = 0x40; ballEn = 0xFB; }
 	if(loseFlag) {state = Ball_Start; ballPos = 0x40; ballEn = 0xFB; }
 	if(joyMove & 0x01) { state = Ball_Start; ballPos = 0x40; ballEn = 0xFB; }
+	if(clearFlag && ballPos == 0x80 ) { clearFlag = 0; state = Ball_dright_up; } 
 	return state;
 }
 
-enum Brick_States {Brick_start, Brick_update, Brick_wait};
+enum Brick_States {Brick_start, Brick_update, Brick_update2, Brick_wait};
 int BrickSMTick(int state) {
 	static unsigned char comp; //used to determine if a brick was hit and update score
 	switch(state) {
 		case Brick_start:
 			brickEn = 0xE0;
-			if(joyMove & 0x02) state = Brick_update;
+			brickEn2 = 0xE0;
+			if(joyMove & 0x02) {
+				if(lv2) { state = Brick_update2; }
+				else { state = Brick_update; }
+			}
 			break;
 		case Brick_update:
 			if(ballPos == 0x01) {
@@ -288,6 +460,17 @@ int BrickSMTick(int state) {
 				if(brickEn == 0xFF) {
 					winFlag = 1;
 					state = Brick_start;
+				}
+			}
+			break;
+		case Brick_update2: //Lv2 brick update
+			if(ballPos == 0x02) {
+				comp = brickEn2;
+				brickEn2 = (brickEn2 | (~ballEn) );
+				if(comp != brickEn2) { ++score; sFlag = 1; }
+				if(brickEn2 == 0xFF) {
+					clearFlag = 1;
+					state = Brick_update;
 				}
 			}
 			break;
@@ -336,7 +519,7 @@ int PaddleSMTick(int state) {
 	if(joyMove & 0x01) state = Paddle_start;
 	return state;
 }
-enum Nokia_States {Nokia_start, Nokia_inGame, Nokia_score, Nokia_win1, Nokia_lose1, Nokia_wait, Nokia_waitScore, Nokia_winWait};
+enum Nokia_States {Nokia_start, Nokia_inGame, Nokia_score, Nokia_win1, Nokia_lose1, Nokia_wait, Nokia_waitScore, Nokia_winWait, Nokia_loseWait};
 int NokiaSMTick(int state) {
 	switch(state) {
 		case Nokia_start:
@@ -368,10 +551,18 @@ int NokiaSMTick(int state) {
 		case Nokia_win1:
 			Nokia_clear();
 			Nokia_string("Nice! You Won!");
-			for(unsigned char i = 0; i < 100; ++i) Nokia_write(0x00);
+			for(unsigned char i = 0; i < 99; ++i) Nokia_write(0x00);
 			Nokia_string("Current score: ");
 			Nokia_print(score + '0');
 			state = Nokia_winWait;
+			break;
+		case Nokia_lose1:
+			Nokia_clear();
+			Nokia_string("GG. Game Over!");
+			for(unsigned char i = 0; i < 99; ++i) Nokia_write(0x00);
+			Nokia_string("Final score: ");
+			Nokia_print(score + '0');
+			state = Nokia_loseWait;
 			break;
 		case Nokia_wait:
 			if(joyMove & 0x02) state = Nokia_inGame;
@@ -381,12 +572,15 @@ int NokiaSMTick(int state) {
 			break;
 		case Nokia_winWait:
 			if(!winFlag) state = Nokia_start;
-			//if(joyMove & 0x02) state = Nokia_start;
+			break;
+		case Nokia_loseWait:
+			if(!loseFlag) state = Nokia_start;
 			break;
 		default:
 			state = Nokia_start; break;
 	}
 	if(joyMove & 0x01) { state = Nokia_start; }
+	if(loseFlag && state != Nokia_loseWait) { state = Nokia_lose1; }
 	return state;
 }
 
@@ -417,7 +611,6 @@ int JoystickSMTick(int state) {
 	}
 	ADMUX &= 0xFE; //Next ADC value read will be from PA0
 	
-	//PORTB = joyMove;
 	return state;	
 }
 
@@ -444,7 +637,7 @@ int main(void) {
 	task1.TickFct = &LEDSMTick;
 
 	task2.state = start;
-	task2.period = 400;
+	task2.period = 300;
 	task2.elapsedTime = task2.period;
 	task2.TickFct = &BallSMTick;
 
