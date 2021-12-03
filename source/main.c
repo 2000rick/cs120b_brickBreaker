@@ -23,6 +23,7 @@
 #include "stack.h"
 #include "timer.h"
 #include "Nokia.h"
+#include <stdlib.h>
 #ifdef _SIMULATE_
 #include "simAVRHeader.h"
 #endif
@@ -66,6 +67,7 @@ unsigned char brickPattern2 = 0x02; //Additional bricks for lv2
 unsigned char brickEn2 = 0xE0; //brick enable for lv2, which is all 5 rows/columns initially
 unsigned char lv2 = 0; //Flag that indicates we are in level 2 
 unsigned char clearFlag = 0; //signals to the BallSM that one row in lv2 has been cleared
+unsigned char winFlag2 = 0; //winFlag for level 2
 
 enum LED_States {Start, GameWon, GameOver, Level2, Wait };
 int LEDSMTick(int state) {
@@ -74,6 +76,7 @@ int LEDSMTick(int state) {
 	static unsigned char pattern = 0x00;//pattern  1 =  LED on (Positive pins)
 	static unsigned char enable = 0xFF; //row enable: if row = 0 -> display (Negative pins/ground)
 
+	if(joyMove & 0x01) { state = Start; lv2 = 0; }
 	switch (state) {
 		case Start:
 			if(cnt == 0) {
@@ -121,7 +124,10 @@ int LEDSMTick(int state) {
 			cnt++;
 			pattern = 0xFF;
 			enable = 0xE0;
-			if(joyMove & 0x02) { state = Level2; cnt = 0; pattern = 0x00; enable = 0xFF; winFlag = 0; lv2 = 1; }
+			if(joyMove & 0x02) { 
+				state = Level2; cnt = 0; pattern = 0x00; enable = 0xFF; winFlag = 0; lv2 = 1; 
+				if(winFlag2) { winFlag2 = 0; lv2 = 0; state = Start; }
+			}
 			break;
 		case GameOver:
 			cnt++;
@@ -177,8 +183,8 @@ int LEDSMTick(int state) {
 			else {
 				cnt = 0;
 			}
-			if(winFlag) { state = GameWon; cnt = 0; }
-			if(loseFlag) { state = GameOver; cnt = 0; }
+			if(winFlag2) { state = GameWon; cnt = 0; }
+			if(loseFlag) { state = GameOver; cnt = 0; lv2 = 0; }
 			break;
 		default: 
 			state = Start; break;
@@ -460,6 +466,7 @@ int BrickSMTick(int state) {
 				if(brickEn == 0xFF) {
 					winFlag = 1;
 					state = Brick_start;
+					if(lv2) winFlag2 = 1;
 				}
 			}
 			break;
@@ -519,7 +526,7 @@ int PaddleSMTick(int state) {
 	if(joyMove & 0x01) state = Paddle_start;
 	return state;
 }
-enum Nokia_States {Nokia_start, Nokia_inGame, Nokia_score, Nokia_win1, Nokia_lose1, Nokia_wait, Nokia_waitScore, Nokia_winWait, Nokia_loseWait};
+enum Nokia_States {Nokia_start, Nokia_inGame, Nokia_score, Nokia_win1, Nokia_lose1, Nokia_wait, Nokia_waitScore, Nokia_winWait, Nokia_loseWait, Nokia_l2start, Nokia_win2, Nokia_winWait2 };
 int NokiaSMTick(int state) {
 	switch(state) {
 		case Nokia_start:
@@ -544,14 +551,21 @@ int NokiaSMTick(int state) {
 			Nokia_write(0x9F); //set X pos
 			PORTB |= 0x04; //data
 			Nokia_write(0x00); Nokia_write(0x00); Nokia_write(0x00); Nokia_write(0x00); //clear score on LCD
-			Nokia_print(score + '0'); //display new score on LCD
+			if(score < 10) {
+				Nokia_print(score + '0'); //display new score on LCD
+			}
+			else {
+				Nokia_print('1');
+				Nokia_print(score-10 + '0');
+			}
 			state = Nokia_waitScore;
-			if(score == 5) state = Nokia_win1;
+			if(winFlag) state = Nokia_win1;
+			if(winFlag2) state = Nokia_win2;
 			break;
 		case Nokia_win1:
 			Nokia_clear();
-			Nokia_string("Nice! You Won!");
-			for(unsigned char i = 0; i < 99; ++i) Nokia_write(0x00);
+			Nokia_string  ("Level 1 complete!");
+			for(unsigned char i = 0; i < 84; ++i) Nokia_write(0x00);
 			Nokia_string("Current score: ");
 			Nokia_print(score + '0');
 			state = Nokia_winWait;
@@ -561,7 +575,11 @@ int NokiaSMTick(int state) {
 			Nokia_string("GG. Game Over!");
 			for(unsigned char i = 0; i < 99; ++i) Nokia_write(0x00);
 			Nokia_string("Final score: ");
-			Nokia_print(score + '0');
+			if(score < 10) { Nokia_print(score + '0'); }
+			else {
+				Nokia_print('1');
+				Nokia_print(score-10 + '0');
+			}
 			state = Nokia_loseWait;
 			break;
 		case Nokia_wait:
@@ -571,15 +589,32 @@ int NokiaSMTick(int state) {
 			if(sFlag) { state = Nokia_score; sFlag = 0; }
 			break;
 		case Nokia_winWait:
-			if(!winFlag) state = Nokia_start;
+			if(!winFlag) state = Nokia_l2start;
 			break;
 		case Nokia_loseWait:
 			if(!loseFlag) state = Nokia_start;
 			break;
+		case Nokia_l2start:
+			Nokia_clear();
+			Nokia_string("Welcome to level 2");
+			for(unsigned char i = 0; i < 164; ++i) Nokia_write(0x00);
+			Nokia_string("Move joystick up to start");
+			state = Nokia_wait;
+			break;
+		case Nokia_win2:
+			Nokia_clear();
+			Nokia_string("Nice! You Won!");
+			for(unsigned char i = 0; i < 99; ++i) Nokia_write(0x00);
+			Nokia_string("Total score: 15");
+			state = Nokia_winWait2;
+			break;
+		case Nokia_winWait2:
+			if(!winFlag2) state = Nokia_start;
+			break;
 		default:
 			state = Nokia_start; break;
 	}
-	if(joyMove & 0x01) { state = Nokia_start; }
+	if(joyMove & 0x01 && state != Nokia_win1 && state != Nokia_winWait && state != Nokia_win2 && state != Nokia_winWait2) { state = Nokia_start; }
 	if(loseFlag && state != Nokia_loseWait) { state = Nokia_lose1; }
 	return state;
 }
