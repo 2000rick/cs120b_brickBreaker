@@ -710,6 +710,6 @@ int main(void) {
 		}
 		while(!TimerFlag) {}
 		TimerFlag = 0;
-    }
-    return 1;
+	}
+	return 1;
 }
