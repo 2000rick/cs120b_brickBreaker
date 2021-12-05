@@ -15,12 +15,9 @@
 
 #include <avr/io.h>
 #include <stdio.h>
-#include "bit.h"
-#include "io.c"
+#include "io.c" //included just for delay_ms()
 #include "io.h"
-#include "queue.h"
 #include "scheduler.h"
-#include "stack.h"
 #include "timer.h"
 #include "Nokia.h"
 #include <stdlib.h>
@@ -411,7 +408,6 @@ int BallSMTick(int state) {
 		case Ball_dleft_down2: //diagonal left going down
 			if(ballEn == 0xFE && ballPos == 0x80) { //case where ball hits bottom-left corner
 				state = Ball_dright_up2;
-				//ballEn = (ballEn << 1) | 0x01;  //commented out this line to make the ball be able to hit all bricks
 				ballPos = ballPos >> 1;
 			}
 			else if(ballEn == 0xFE) { //case where ball hits left bounadry/wall
@@ -597,7 +593,7 @@ int NokiaSMTick(int state) {
 		case Nokia_l2start:
 			Nokia_clear();
 			Nokia_string("Welcome to level 2");
-			for(unsigned char i = 0; i < 164; ++i) Nokia_write(0x00);
+			for(unsigned char i = 0; i < 163; ++i) Nokia_write(0x00);
 			Nokia_string("Move joystick up to start");
 			state = Nokia_wait;
 			break;

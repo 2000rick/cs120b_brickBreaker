@@ -10,7 +10,6 @@ void Nokia_write(unsigned char input) {
 		else PORTB &= ~(0x08);
 		input = input << 1;
 		PORTB |= 0x10; //Pulse Clk 1/2
-		//delay_ms(1);
 		PORTB &= ~(0x10); //Pulse Clk 2/2
 	}
 	PORTB |= ~(0xFD); //Set CE back to high
@@ -44,15 +43,6 @@ void Nokia_init() {
 	Nokia_write(0x0C); //command mode 4/4
 	PORTB |= 0x04; //Swicth from command to data
 	Nokia_clear();
-	/*Nokia_string("Welcome to Brick Breaker");
-	for(unsigned char i = 0; i < 132; ++i) Nokia_write(0x00);
-	Nokia_string("Move joystick up to start"); */
-	/*Nokia_write(0x1F);
-	Nokia_write(0x05);
-	Nokia_write(0x07);
-	Nokia_write(0x00);
-	Nokia_write(0x1F);//PI should be displayed (from datasheet)
-	*/
 }
 
 #endif
