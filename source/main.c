@@ -700,7 +700,7 @@ int main(void) {
 	TimerOn();
 	
 	unsigned short i;
-    while (1) {
+	while (1) {
 		for(i = 0; i < numTasks; i++) {
 			if(tasks[i]->elapsedTime >= tasks[i]->period) {
 				tasks[i]->state = tasks[i]->TickFct(tasks[i]->state);
