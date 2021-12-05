@@ -10,7 +10,7 @@
  *	I acknowledge all content contained herein, excluding template or example
  *	code, is my own original work.
  *
- *	Demo Link: 
+ *	Demo Link: https://youtu.be/C0zwspa8cSA 
  */
 
 #include <avr/io.h>
@@ -700,7 +700,7 @@ int main(void) {
 	TimerOn();
 	
 	unsigned short i;
-    while (1) {
+	while (1) {
 		for(i = 0; i < numTasks; i++) {
 			if(tasks[i]->elapsedTime >= tasks[i]->period) {
 				tasks[i]->state = tasks[i]->TickFct(tasks[i]->state);
@@ -710,6 +710,6 @@ int main(void) {
 		}
 		while(!TimerFlag) {}
 		TimerFlag = 0;
-    }
-    return 1;
+	}
+	return 1;
 }
